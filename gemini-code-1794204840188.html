@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SPACE MATH ADVENTURE</title>
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.55.2/dist/phaser.min.js"></script>
+    <style>
+        body {
+            margin: 0; padding: 0;
+            background-color: #0b0d1b; color: #fff;
+            font-family: 'Courier New', Courier, monospace;
+            display: flex; justify-content: center; align-items: center;
+            height: 100vh; overflow: hidden;
+        }
+        #game-container { position: relative; box-shadow: 0 0 20px rgba(0, 240, 255, 0.3); }
+        #quest-modal {
+            display: none; position: absolute; top: 50%; left: 50%;
+            transform: translate(-50%, -50%); width: 420px;
+            background: #190b28; border: 3px solid #00f0ff;
+            box-shadow: 0 0 15px #00f0ff; padding: 20px;
+            border-radius: 8px; text-align: center; z-index: 10;
+        }
+        #quest-modal h3 { color: #00f0ff; margin-top: 0; }
+        #quest-question { font-size: 15px; margin: 15px 0; color: #e0e0e0; white-space: pre-line; }
+        #quest-input {
+            width: 80%; padding: 10px; font-size: 16px;
+            background: #0b0d1b; border: 1px solid #00f0ff;
+            color: #fff; text-align: center; margin-bottom: 15px; border-radius: 4px;
+        }
+        .btn-group { display: flex; justify-content: space-around; }
+        button { padding: 8px 16px; font-family: inherit; font-weight: bold; cursor: pointer; border: none; border-radius: 4px; }
+        .btn-submit { background: #00f0ff; color: #000; }
+        .btn-close { background: #ff4b4b; color: #fff; }
+        #quest-feedback { margin-top: 10px; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <div id="quest-modal">
+        <h3 id="quest-title">PANEL KERUSAKAN</h3>
+        <p id="quest-question">Soal Matematika...</p>
+        <input type="text" id="quest-input" placeholder="Masukkan jawaban..." autocomplete="off">
+        <div class="btn-group">
+            <button class="btn-submit" onclick="submitAnswer()">KIRIM (ENTER)</button>
+            <button class="btn-close" onclick="closeQuest()">BATAL</button>
+        </div>
+        <div id="quest-feedback"></div>
+    </div>
+</div>
+
+<script>
+class MathGenerator {
+    static generateArithmetic() {
+        const start = Math.floor(Math.random() * 10) + 1;
+        const diff = Math.floor(Math.random() * 5) + 2;
+        const seq = [start, start + diff, start + diff * 2, start + diff * 3];
+        return {
+            title: "ENGINE ROOM: PERBAIKAN MESIN",
+            question: `Tentukan suku berikutnya dalam pola aritmetika:\n${seq.join(', ')}, ...`,
+            answer: (start + diff * 4).toString()
+        };
+    }
+    static generateGeometric() {
+        const start = Math.floor(Math.random() * 3) + 1;
+        const ratio = 2;
+        const seq = [start, start * ratio, start * ratio * ratio, start * ratio * ratio * ratio];
+        return {
+            title: "COMMUNICATION: FREKUENSI RADIO",
+            question: `Tentukan suku berikutnya dalam pola geometri:\n${seq.join(', ')}, ...`,
+            answer: (start * Math.pow(ratio, 4)).toString()
+        };
+    }
+    static generateTranslation() {
+        const x = Math.floor(Math.random() * 6) - 3;
+        const y = Math.floor(Math.random() * 6) - 3;
+        const tx = Math.floor(Math.random() * 5) + 1;
+        const ty = Math.floor(Math.random() * 5) + 1;
+        return {
+            title: "NAVIGATION: TRANSLASI KOORDINAT",
+            question: `Titik A(${x}, ${y}) ditranslasikan oleh T(${tx}, ${ty}).\nTentukan bayangan A' (format: x,y)`,
+            answer: `${x + tx},${y + ty}`
+        };
+    }
+    static getRandomQuest() {
+        const types = [this.generateArithmetic, this.generateGeometric, this.generateTranslation];
+        return types[Math.floor(Math.random() * types.length)]();
+    }
+}
+
+let player, cursors, interactKey, currentQuest = null, activeConsole = null;
+let shipIntegrity = 100, playerHP = 100, mistakes = 0;
+let integrityText, hpText, interactionText;
+
+const config = {
+    type: Phaser.AUTO, width: 800, height: 600,
+    parent: 'game-container',
+    physics: { default: 'arcade', arcade: { debug: false } },
+    scene: { preload: preload, create: create, update: update }
+};
+
+const game = new Phaser.Game(config);
+
+function preload() {
+    const graphics = this.add.graphics();
+    graphics.fillStyle(0xffcc00, 1); graphics.fillRect(0, 0, 24, 24);
+    graphics.fillStyle(0x00f0ff, 1); graphics.fillRect(12, 4, 10, 8);
+    graphics.generateTexture('astronaut', 24, 24);
+    graphics.clear();
+
+    graphics.fillStyle(0x00f0ff, 1); graphics.fillRect(0, 0, 32, 32);
+    graphics.fillStyle(0xff007f, 1); graphics.fillRect(8, 8, 16, 16);
+    graphics.generateTexture('console', 32, 32);
+    graphics.clear();
+}
+
+function create() {
+    const walls = this.physics.add.staticGroup();
+    const bg = this.add.graphics();
+    bg.fillStyle(0x13172d, 1); bg.fillRect(50, 50, 700, 500);
+    bg.lineStyle(4, 0x2c1654, 1); bg.strokeRect(50, 50, 700, 500);
+
+    walls.add(this.add.rectangle(400, 48, 700, 10, 0x00f0ff));
+    walls.add(this.add.rectangle(400, 552, 700, 10, 0x00f0ff));
+    walls.add(this.add.rectangle(48, 300, 10, 500, 0x00f0ff));
+    walls.add(this.add.rectangle(752, 300, 10, 500, 0x00f0ff));
+    walls.add(this.add.rectangle(400, 300, 300, 20, 0x2c1654));
+
+    const consoles = this.physics.add.staticGroup();
+    consoles.create(150, 120, 'console').setName('Engine Terminal');
+    consoles.create(650, 120, 'console').setName('Navigation Terminal');
+    consoles.create(400, 480, 'console').setName('Comms Terminal');
+
+    player = this.physics.add.sprite(400, 200, 'astronaut');
+    player.setCollideWorldBounds(true);
+    this.physics.add.collider(player, walls);
+
+    const nameLabel = this.add.text(0, 0, 'Player 1', { font: '12px Courier', fill: '#00f0ff' }).setOrigin(0.5);
+    cursors = this.input.keyboard.createCursorKeys();
+    interactKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.E);
+
+    this.physics.add.overlap(player, consoles, (p, consoleObj) => {
+        activeConsole = consoleObj;
+        interactionText.setText(`Tekan [E] untuk memperbaik ${consoleObj.name}`);
+        interactionText.setVisible(true);
+    });
+
+    integrityText = this.add.text(70, 65, 'SHIP INTEGRITY: 100%', { font: '16px Courier', fill: '#00f0ff' });
+    hpText = this.add.text(70, 85, 'PLAYER HP: 100', { font: '16px Courier', fill: '#00ff66' });
+    interactionText = this.add.text(400, 520, '', { font: '14px Courier', fill: '#ffff00', background: '#000' }).setOrigin(0.5);
+
+    this.events.on('postupdate', () => {
+        nameLabel.setPosition(player.x, player.y - 20);
+        if (!this.physics.overlap(player, consoles)) {
+            activeConsole = null;
+            interactionText.setVisible(false);
+        }
+    });
+
+    interactKey.on('down', () => {
+        if (activeConsole && document.getElementById('quest-modal').style.display !== 'block') {
+            openQuest();
+        }
+    });
+
+    document.getElementById('quest-input').addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') submitAnswer();
+    });
+}
+
+function update() {
+    player.setVelocity(0);
+    if (document.getElementById('quest-modal').style.display === 'block') return;
+
+    const speed = 160;
+    if (cursors.left.isDown) player.setVelocityX(-speed);
+    else if (cursors.right.isDown) player.setVelocityX(speed);
+    if (cursors.up.isDown) player.setVelocityY(-speed);
+    else if (cursors.down.isDown) player.setVelocityY(speed);
+}
+
+function openQuest() {
+    currentQuest = MathGenerator.getRandomQuest();
+    document.getElementById('quest-title').innerText = currentQuest.title;
+    document.getElementById('quest-question').innerText = currentQuest.question;
+    document.getElementById('quest-input').value = '';
+    document.getElementById('quest-feedback').innerText = '';
+    document.getElementById('quest-modal').style.display = 'block';
+    setTimeout(() => document.getElementById('quest-input').focus(), 50);
+}
+
+function closeQuest() { document.getElementById('quest-modal').style.display = 'none'; }
+
+function submitAnswer() {
+    const userAns = document.getElementById('quest-input').value.trim();
+    const feedback = document.getElementById('quest-feedback');
+
+    if (userAns === currentQuest.answer) {
+        feedback.style.color = '#00ff66';
+        feedback.innerText = 'JAWABAN BENAR! PERBAIKAN BERHASIL.';
+        shipIntegrity = Math.min(100, shipIntegrity + 5);
+        integrityText.setText(`SHIP INTEGRITY: ${shipIntegrity}%`);
+        setTimeout(closeQuest, 1000);
+    } else {
+        feedback.style.color = '#ff4b4b';
+        feedback.innerText = 'JAWABAN SALAH! KESALAHAN SISTEM.';
+        mistakes++;
+        if (mistakes >= 3) {
+            playerHP = Math.max(0, playerHP - 15);
+            shipIntegrity = Math.max(0, shipIntegrity - 10);
+            hpText.setText(`PLAYER HP: ${playerHP}`);
+            integrityText.setText(`SHIP INTEGRITY: ${shipIntegrity}%`);
+            if (playerHP === 0 || shipIntegrity === 0) {
+                alert("GAME OVER! Pesawat mengalami kerusakan parah.");
+                location.reload();
+            }
+        }
+    }
+}
+</script>
+</body>
+</html>
